@@ -7,14 +7,14 @@ import sys
 
 # begin constants
 CSV_FILENAME            = "raffle.csv"
-SCREEN_HEIGHT           = 100     # pixels
+SCREEN_HEIGHT           = 500     # pixels
 SCREEN_LENGTH           = 600     # pixels
 MAX_FPS                 = 60      # frames/sec
-MIN_SPIN_VELOCITY       = 3000    # pixels/sec
-MAX_SPIN_VELOCITY       = 7000    # pixels/sec
-SPIN_ACCELERATION       = -500    # pixels/sec^2
+MIN_SPIN_VELOCITY       = 300    # pixels/sec
+MAX_SPIN_VELOCITY       = 700    # pixels/sec
+SPIN_ACCELERATION       = -50    # pixels/sec^2
 VELOCITY_ZERO_DEADBAND  = 10      # pixels/sec
-TICKET_SPACING          = 80     # pixels
+TICKET_SPACING          = 100     # pixels
 FONT_SIZE               = 100     # pixels
 # end constants
 
@@ -43,29 +43,29 @@ def get_raffle_tickets():
 def clear():
     w.fill((255, 255, 255))
 
+def render_tickets(tickets, cameraPos):
+    ticketPosCur = 0.0
+    for ticket in tickets:
+        relativePos = ticketPosCur - cameraPos
+        if (relativePos <= -FONT_SIZE + 40 or relativePos >= SCREEN_LENGTH + FONT_SIZE) == False:
+            font.render_to(w, (0, int(relativePos)), str(ticket))
+        ticketPosCur += TICKET_SPACING
 
-minDistFromCentre = sys.float_info.max - 1
-minDistEntry = None
-minDistEntryCameraPos = None
-
-def render_tickets(tickets, cameraPos, draw):
-    global minDistFromCentre, minDistEntry, minDistEntryCameraPos
+def getClosestToCenter(tickets, cameraPos):
     minDistFromCentre = sys.float_info.max - 1
     minDistEntry = None
     minDistEntryCameraPos = None
     ticketPosCur = 0.0
     for ticket in tickets:
-        cameraPosFixed = cameraPos % (TICKET_SPACING * len(tickets))
-        relativePos = ticketPosCur - cameraPosFixed
-        curDistFromCentre = abs((SCREEN_HEIGHT/2) - (relativePos + (FONT_SIZE / 2)))
-        if curDistFromCentre < minDistFromCentre:
-            minDistFromCentre = curDistFromCentre
+        relativePos = ticketPosCur - cameraPos
+        ticketCenterRelativePos = relativePos + (FONT_SIZE / 2)
+        distanceFromCenter = abs((SCREEN_HEIGHT / 2) - ticketCenterRelativePos)
+        if distanceFromCenter < minDistFromCentre:
+            minDistFromCentre = distanceFromCenter
             minDistEntry = ticket
-            minDistEntryCameraPos = cameraPosFixed
-        if (relativePos <= -FONT_SIZE + 40 or relativePos >= SCREEN_LENGTH + FONT_SIZE) == False:
-            if draw:
-                font.render_to(w, (0, int(relativePos)), str(ticket))
+            minDistEntryCameraPos = ticketPosCur - (2 * TICKET_SPACING)
         ticketPosCur += TICKET_SPACING
+    return [minDistEntry, minDistFromCentre, minDistEntryCameraPos]
 
 tickets = get_raffle_tickets()
 random.shuffle(tickets)
@@ -81,11 +81,10 @@ c = pygame.time.Clock()
 
 velocityPrev = 0.0
 velocity = 0.0
-position = random.random() * len(tickets) * TICKET_SPACING
-
-#print(len(tickets))
+position = -TICKET_SPACING * 2
 
 awaitingFirstSpin = True
+justFinished = False
 
 while running:
     if abs(velocity) > 0.0 or awaitingFirstSpin:
@@ -97,8 +96,14 @@ while running:
             break
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
+                position = -TICKET_SPACING * 2
                 awaitingFirstSpin = False
                 velocity = MIN_SPIN_VELOCITY + (random.random() * (MAX_SPIN_VELOCITY - MIN_SPIN_VELOCITY))
+            if event.key == pygame.K_e:
+                print("position=%.6f velocity=%.6f" % (position, velocity))
+
+    if position > (len(tickets) - 2) * TICKET_SPACING :
+        position = -2 * TICKET_SPACING - (FONT_SIZE / 4)
 
     dt = c.get_time() / 1000.0
     # integrate kinematics.
@@ -107,19 +112,25 @@ while running:
         velocity += SPIN_ACCELERATION * dt
     else:
         velocity = 0.0
-        if abs(velocityPrev) > 0.0 and (minDistEntry == None) == False:
-            render_tickets(tickets, position, False)
-            position = minDistEntryCameraPos
-            render_tickets(tickets, position, True)
-            print("%s wins!" % minDistEntry)
-            tickets.remove(minDistEntry)
-            print(len(tickets))
+        if abs(velocityPrev) > 0.0:
+            closestToCenterList = getClosestToCenter(tickets, position)
+            if (closestToCenterList[2] == None) == False:
+                toRemove = closestToCenterList[0]
+                position = closestToCenterList[2]
+                render_tickets(tickets, position)
+                justFinished = True
+                tickets.remove(toRemove)
+
+                        
     position += velocity * dt
 
     if abs(velocity) > 0.0 or awaitingFirstSpin:
-        render_tickets(tickets, position, True)
+        render_tickets(tickets, position)
 
-    pygame.draw.line(w, (0, 0, 0), (0, SCREEN_HEIGHT / 2), (width, SCREEN_HEIGHT / 2), 3)
+    pygame.draw.line(w, (255, 0, 0), (0, int((SCREEN_HEIGHT / 2) - (FONT_SIZE / 2))), (width, int((SCREEN_HEIGHT / 2) - (FONT_SIZE / 2))), 3)
+    pygame.draw.line(w, (255, 0, 0), (0, int((SCREEN_HEIGHT / 2) + (FONT_SIZE / 2))), (width, int((SCREEN_HEIGHT / 2) + (FONT_SIZE / 2))), 3)
 
     c.tick(MAX_FPS)
-    pygame.display.flip()  
+    if abs(velocity) > 0.0 or awaitingFirstSpin or justFinished:
+        pygame.display.flip()  
+        justFinished = False
